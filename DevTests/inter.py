@@ -8,10 +8,11 @@ notes:
       ->  a, b, q:              format: [sol1      , sol2      , sol3,      ...]
     This: a, b, q:  [[sol1], [sol2], [sol3]]
 
+    BOSS: nstyp[i] starts at 1
 """
 
 
-def hbond(nsatm, iztyp, asol, iatno, nmol, nsvat, nstyp, isatno, ac, aw, a, ityp):
+def hbond(nsatm, iztyp, asol, iatno, nmol, nsvat, nstyp, isatno, ac, aw, a, ityp, **kws):
     rhb2 = 6.25
     naccp = 0
     ndon = 0
@@ -49,7 +50,7 @@ def hbond(nsatm, iztyp, asol, iatno, nmol, nsvat, nstyp, isatno, ac, aw, a, ityp
     return naccp, ndon
 
 
-def ssljco(nmol, noss, nstyp, modsv1, modsv2, anew, nsvat, ac):
+def ssljco(nmol, noss, nstyp, modsv1, modsv2, anew, nsvat, ac, **kws):
     esljol = 0.0
     escool = 0.0
     sslj = 0.0
@@ -79,7 +80,7 @@ def ssljco(nmol, noss, nstyp, modsv1, modsv2, anew, nsvat, ac):
                     e = wwpot(j)
             else:
                 jtyp = modsv1
-                if nstyp[j] == 2:
+                if nstyp[j] == 1:
                     jtyp = modsv2
                 if ntyp <= 2 and jtyp <= 2:
                     e = wwpot(j)
@@ -93,7 +94,10 @@ def ssljco(nmol, noss, nstyp, modsv1, modsv2, anew, nsvat, ac):
 
 def sspot(
     nm, edge, islab, nstyp, nsvat, ac, nmov, ncutas, icutas, anew, edg2, rcutsq, nmol2,
-    isvaty, qw, aw, bw, iewald, irfon, rffac, natmx, aas, bbs, qqs, rl2, rul, ru2
+    qw, aw, bw, iewald, irfon, rffac, natmx, rl2, rul, ru2,
+    isvaty, #aas, bbs, qqs,         # only for solvent-solvent interactions
+                                    # i-j valid when isvaty[i][j] != 0
+    **kws
 ):
     sspot = 0.0
     sslj = 0.0
@@ -113,7 +117,7 @@ def sspot(
         for j in range(nat2):
             c[j][i] = ac[nm][j][i]
 
-    wik = 1.0e20
+    wik = 100000000
     for i in range(ncutas[n1]):
         nw = icutas[n1][i]
         for j in range(ncutas[n2]):
@@ -142,9 +146,9 @@ def sspot(
     if wik > rcutsq:
         return sspot
 
-    if nmol2 != 0:
+    if nmol2 != 0:  # done
         for i in range(nsvat[n1]):
-            if isvaty[i][n1] <= 0:
+            if isvaty[n1][i] <= 0:      # change `isvaty[i][n1]` to `isvaty[n1][i]`
                 continue
 
             x = anew[i][0]
@@ -156,7 +160,7 @@ def sspot(
             bi = bw[n1][i]
 
             for j in range(nat2):
-                if isvaty[j][n2] <= 0:
+                if isvaty[n2][j] <= 0:
                     continue
                 
                 xx = abs(x - c[j][0])
@@ -186,9 +190,10 @@ def sspot(
                         else:
                             sspot += qqij * (r1 + rr * rffac)
     else:
+        # future, sovlent self interaction
         k = 0
         for i in range(natmx):
-            if isvaty[i][0] <= 0:
+            if isvaty[0][i] <= 0:
                 continue
 
             x = anew[i][0]
@@ -196,7 +201,7 @@ def sspot(
             z = anew[i][2]
 
             for j in range(natmx):
-                if isvaty[j][0] <= 0:
+                if isvaty[0][j] <= 0:
                     continue
                 
                 xx = abs(x - c[j][0])
@@ -227,6 +232,7 @@ def sspot(
     if wik < rl2:
         return sspot
     
+    # not done
     feat = rul * (ru2 - wik)
     sspot *= feat
     sslj *= feat
@@ -236,8 +242,8 @@ def sspot(
 
 def wwpot(
     nm, anew, ac, islab, edg2, edge, rcutsq, aoo, coo, natoms, irfon, rffac, qq, rl2, ru2, rul,
-    kq, iewald
-):
+    kq, iewald, **kws
+):      # done
     xiz = 0.0
     zz = abs(anew[0][2] - ac[nm][0][2])
     if islab != 1:
@@ -245,8 +251,10 @@ def wwpot(
             xiz = edge[2]
     wik = (zz - xiz) ** 2
 
+    ckws = {'sslj':0.0, 'ssall':0.0}
+
     if wik > rcutsq:
-        return 0.0
+        return ckws
 
     xix = 0.0
     xx = abs(anew[0][0] - ac[nm][0][0])
@@ -255,19 +263,20 @@ def wwpot(
     wik += (xx - xix) ** 2
 
     if wik > rcutsq:
-        return 0.0
+        return ckws
 
     xiy = 0.0
-    yy = abs(anew[0, 1] - ac[nm, 0, 1])
+    yy = abs(anew[0][1] - ac[nm][0][1])
     if yy > edg2[1]:
         xiy = edge[1]
     wik += (yy - xiy) ** 2
 
     if wik > rcutsq:
-        return 0.0
+        return ckws
 
     r6 = 1.0 / (wik * wik * wik)
-    val = sslj = r6 * (aoo * r6 - coo)
+    val = r6 * (aoo * r6 - coo)
+    ckws['sslj'] = val
 
     anm = [[0.0,0.0,0.0] for i in range(natoms)]
     for i in range(3):
@@ -291,13 +300,15 @@ def wwpot(
                     val += qq[knt] * (r1 + rr * rffac)
             knt += 1
     if wik < rl2:
-        return val
+        ckws['ssall'] = val
+        return ckws
 
     val *= rul * (ru2 - wik)
-    return val
+    ckws['ssall'] = val
+    return ckws
 
 
-def ecut(natmx, nocut, noss, rcut, nmol, nsvat, modsv1, nmol2, modsv2, aw, bw, vnew, twopi):
+def ecut(natmx, nocut, noss, rcut, nmol, nsvat, modsv1, nmol2, modsv2, aw, bw, vnew, twopi, **kws):
     val = 0.0
 
     if natmx == 0 or nocut == 1 or noss == 1:
@@ -349,7 +360,7 @@ def sxpot(
     nm, movtyp, nstyp, nsvat, ac, nmov, nsatm, icut, ncutas, icutas, anew, ncent1, ncent2,
     asol, islab, edg2, edge, nsolut, icutat, iztyp, nrdfs, scutsq, sl2, su2, sul, nsatno, nofep,
     a, b, q, ityp, ityp1, ityp2,  anew1, anew2, aw, bw, qw, irfon, iewald, rffac, isolec,
-    nrdfa1, nrdfa2, asol1, asol2, capfk, icapat
+    nrdfa1, nrdfa2, asol1, asol2, capfk, icapat, **kws
 ):
     if movtyp != 2:
         n1 = nstyp[nm]
@@ -615,7 +626,7 @@ def wxpot(
     nm, nsvat, modsv1, modsv2, icut, icutat, ncent1, ncent2, islab, isolec, irfon, iewald,
     nrdfs,  nrdfa1, nrdfa2, scutsq, nsatno, sl2, sul, su2, nofep, rffac, nsolut, capfk, icapat, **kws
 ):
-    if movtyp != 2:
+    if movtyp != 2:     # done
         n1 = nstyp[nm]
         natoms = nsvat[n1]
         anm = [[0.0 for i in range(natoms)] for j in range(3)]
@@ -646,14 +657,14 @@ def wxpot(
                 if x > edg2[i]:
                     x -= edge[i]
             wik += x**2
-    else:
+    else:   # done
         rmin = [100000000 for i in range(nsolut)]
         wik = 100000000
         for i in range(nsatm):
             if icut >= 3:
                 bo = True
                 for k in range(ncutat):
-                    if i == icutat[k]:
+                    if i == icutat[k]:      # skip dummy atom
                         bo = False
                         break
                 if bo: continue
@@ -689,16 +700,24 @@ def wxpot(
 
     elj = [0.0, 0.0, 0.0]
     ecoul = [0.0, 0.0, 0.0]
+    gkws = {
+        'elj': elj,
+        'ecoul': ecoul,
+        'ec1': ec1,
+        'ec2': ec2,
+        'ec3': ec3
+    }
+    gkws['wik'] = wik
 
     if wik > scutsq:
-        return
+        return gkws
 
     scal = 1.0
     if wik >= sl2:
         scal = sul * (su2 - wik)
 
     if icut != 0:
-        j = 0
+        j = 0   # done
         for i in range(nsolut):
             if rmin[i] > scutsq:
                 l = j + nsatno[i]
@@ -717,7 +736,7 @@ def wxpot(
     if nofep == 1:
         llim = 1
 
-    if movtyp != 2:
+    if movtyp != 2:     # done
         for i in range(nsatm):
             if iztyp[i] == -1 or iyes[i] == 0:
                 continue
@@ -784,9 +803,10 @@ def wxpot(
                         if j > 1:
                             continue
 
-                    if l == 1:
+                    if l == 0:  # done
                         for kk in range(k0, nrdfs):
-                            if i == nrdfa1[kk] and j == nrdfa2[kk]:
+                            #if i == nrdfa1[kk] and j == nrdfa2[kk]:
+                            if i+1 == nrdfa1[kk] and j+1 == nrdfa2[kk]:     # input index starts at 1
                                 rnew[kk] = r1
                                 k0 = kk + 1
     else:
@@ -878,8 +898,9 @@ def wxpot(
                                 break
 
     if capfk == 0.0:
-        return
-
+        return gkws
+    
+    # not done
     if icapat != 0:
         x = y = z = 0.0
         if movtyp == 1:
@@ -909,11 +930,14 @@ def wxpot(
     else:
         es1 = wxpot
         es2 = wxpot
+    
+    return gkws
+
 
 
 def xxpot(
     edge, islab, nbc, nbcat1, nbcat2, rbc, anew, bck0, bck1, bck2, nofep, anew1, anew2, 
-    ntdih, phinew, dihv0, rc0, rc1, rc2, isqm, itydi
+    ntdih, phinew, dihv0, rc0, rc1, rc2, isqm, itydi, **kws
 ):
     exxnew = exxne1 = exxne2 = exxnec = exxnel = ebcnew = ebcne1 = ebcne2 = 0.0
     edgg = [edge[0], edge[1], edge[2]]
@@ -1061,7 +1085,7 @@ import random  # Used for generating random numbers
 def rotate(
     angle,
     movtyp, nstyp, nat, nmov, modcus, ncents, iflxsl, isol, nrota1, nrota2, nfatm, nvdih, nvbnd, nvang,
-    nlatm, anew, anew1, anew2
+    nlatm, anew, anew1, anew2, **kws
 ):
     iax = int(3 * ranu() + 1)
     if movtyp != 1:
@@ -1138,7 +1162,7 @@ def movsvn(
     nsvat, nstyp, nmov, modcus, ncents, rdel, rdl2, anew, ac, islab, edg2, edge, adel, adl2, iflxsl,
     modsv1, modsv2, noss, nmol, nbuse, nbor, nrdfs, knew, rinc, rnew, rdlmin, eij,
     esonol, ess, esonco, esonlo, ecsx, essc, essl, elsx, es1, es2, ess1, ess2,
-    esol1, esol2, eold, npols, icussl, iewald, nopref, wnew, wi, wisum, wik, wkc, 
+    esol1, esol2, eold, npols, icussl, iewald, nopref, wnew, wi, wisum, wik, wkc, **kws
 ):
     natoms = nsvat[nstyp[nmov]]
     nat = natoms
@@ -1195,7 +1219,7 @@ def movsvn(
                     e = wwpot(j)
             else:
                 jtyp = modsv1
-                if nstyp[j] == 2:
+                if nstyp[j] == 1:
                     jtyp = modsv2
 
                 if ntyp <= 2 and jtyp <= 2:
@@ -1293,7 +1317,7 @@ def movmol(
     igbsa, exxnew, exxold, eponw, epoold, iewald, natmx, nmol, modsv1, nstyp, modsv2, emov, ecsx,
     elsx, essc, essl,  ess, ess1, ess2, es1, es2, wik,  rnew, rinc, rdlemin, wnew, wkc, nopref,
     esinol, angt2, emovc, emovl, esmov, esmov2, esonol, beta, lhtsol, betlht, vdl2, vdel, ivxyz,
-    vold, ac, nsvat, noss, eij
+    vold, ac, nsvat, noss, eij, **kws
 ):
     if movvol == 1:
         # goto 300
@@ -1712,7 +1736,7 @@ def movmol(
         nmov = i
         ntyp = modsv1
         
-        if nstyp[i] == 2:
+        if nstyp[i] == 1:
             ntyp = modsv2
         
         natoms = nsvat[nstyp[i]]
@@ -1813,10 +1837,159 @@ def movmol(
     return
 
 
+def enmtx(
+    nmol, noss, icussl, igbsa,
+    #slvbnd, nvbnd, nvang, nvdih, nabnd, naang, nadih,       # for `icussl==1`
+    #modcus, nvsbnd, nvsang, nvsdih,
+    **kws
+):
+    iewald = kws['iewald']
+    ac = kws['ac']
+    nstyp = kws['nstyp']
+    nsvat = kws['nsvat']
+    natmx = kws['natmx']
+    asol = kws['asol']
+    asol1 = kws['asol1']
+    asol2 = kws['asol2']
+    modsv1 = kws['modsv1']
+    modsv2 = kws['modsv2']
 
+    kws['eij'] = eij = [0.0 for i in range(nmol*(nmol-1))]
 
+    enew = esbnne = esanhe = esdine = esnbne = esinne = 0.0
 
+    if natmx != 0:  # done
+        kws['movtyp'] = 0
+        knt = 0
+        for i in range(nmol):
+            kws['nmov'] = i
+            jtyp = nstyp[i]
+            kws['natoms'] = natoms = nsvat[jtyp]        # special
+            ntyp = modsv1 if jtyp != 2 else modsv2
 
+            kws['anew'] = [[ac[i][l][m] for m in range(3)] for l in range(natoms)]
+
+            for j in range(i+1, nmol):
+                kws['nm'] = j
+                if noss == 1:
+                    pass
+                elif nsvat[1] == 0: # not
+                    if modsv1 > 2:
+                        ckws = sspot(**kws)
+                    else:
+                        ckws = wwpot(**kws)
+                else:   # done
+                    jtyp = modsv1 if nstyp[j] != 1 else modsv2
+                    if ntyp <= 2 and jtyp <= 2:
+                        ckws = wwpot(**kws)
+                    else:
+                        ckws = sspot(**kws)
+
+                e = 0.0
+                eij[knt] = e
+                enew += e
+                knt += 1
+
+        if icussl == 1:
+            raise NotImplementedError('icussl==1')
+
+    kws['anew']  = kws['solutesdata']['reference']['xyz']
+    kws['anew1'] = kws['solutesdata']['first']['xyz']
+    kws['anew2'] = kws['solutesdata']['second']['xyz']
+
+    if igbsa == 1:
+        raise NotImplementedError('igbsa==1')
+
+    if natmx != 0:
+        kws['movtyp'] = 1
+        wkc = kws['wkc']
+        essmin = kws['essmin']
+        essinc = kws['essinc']
+        wi = [0.0 for i in range(nmol)]
+        esone = esonc = esonl = eson1 = eson2 = wisum = 0.0
+        kws['ess'] = ess = [0.0 for i in range(nmol)]
+        kws['ess1'] = ess1 = [0.0 for i in range(nmol)]
+        kws['ess2'] = ess2 = [0.0 for i in range(nmol)]
+        kws['essc'] = essc = [0.0 for i in range(nmol)]
+        kws['essl'] = essl = [0.0 for i in range(nmol)]
+        kws['ioess'] = ioess = [[0 for i in range(50)] for i in range(2)]
+        for i in range(nmol):
+            kws['nm'] = i
+            modsv = modsv1 if nstyp[i] != 1 else modsv2
+            if modsv > 2:
+                ckws = sxpot(**kws)
+            else:
+                ckws = wxpot(**kws)
+            wik = 1.0   # ckws['wik']
+            wik = 1.0 / (wik + wkc)
+            wi[i] = wik
+            wisum += wik
+            ess[i] = e
+            essc[i] = 0.0 # ecsx
+            essl[i] = 0.0 # elsx
+            j = int((e - essmin) / essinc) + 1
+            if 1 <= j <= 50:
+                ioess[j][0] += 1
+            eson1 += 0.0 # es1
+            ess1[i] = 0.0 #es1
+            eson2 += 0.0 # es2
+            ess2[i] = 0.0 # es2
+            esone += e
+            esonc += 0.0 # ecsx
+            esonl += 0.0 # elsx
+        enew += esone
+        wimax = 0.0
+        for i in range(nmol):
+            wi[i] /= wisum
+            wimax = max(wimax, wi[i])
+
+    movtyp = 0
+
+    if nvbnd != 0:
+        for i in range(nvbnd):
+            x = bnd[i]
+            bndnew[i] = x
+            bndne1[i] = x + (bndr1[i] - bndr0[i])
+            bndne2[i] = x + (bndr2[i] - bndr0[i])
+
+    if nvang != 0:
+        for i in range(nvang):
+            x = ang[i]
+            angnew[i] = x
+            angne1[i] = x + (angt1[i] - angt0[i])
+            angne2[i] = x + (angt2[i] - angt0[i])
+
+    if nvdih != 0:
+        for i in range(nvdih):
+            x = phi[i]
+            phinew[i] = phine1[i] = phine2[i] = x
+
+    x = 0.0
+    eintra(x, 0)
+    enew += x
+
+    if nabnd != 0:
+        for i in range(nvbnd, ntbnd):
+            bnd[i] = bndnew[i]
+
+    if naang != 0:
+        for i in range(nvang, ntang):
+            ang[i] = angnew[i]
+
+    if nadih != 0:
+        for i in range(nvdih, ntdih):
+            phi[i] = phinew[i]
+
+    xxpot()
+    enew += exxnew
+
+    #polpot()
+    #enew += eponew
+
+    enew += ecut()
+
+    if iewald == 1:
+        raise NotImplementedError('iewald==1')
 
 
 

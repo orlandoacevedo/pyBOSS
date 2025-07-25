@@ -5,10 +5,10 @@ QT4 = [   0.0,  0.52,   0.52,  -1.04]
 SOLVENT_MODE = {
     1: {
         'solvent_name': 'TIP3P',
-        'AOO': 582000.0,
-        'COO': 595.0,
-        'KQ': 1,
-        'QQ': [
+        'aoo': 582000.0,
+        'coo': 595.0,
+        'kq': 0,        # coulombic interaction index starts at 0
+        'qq': [
             ESQ*QT3[0]*QT3[0], ESQ*QT3[0]*QT3[1], ESQ*QT3[0]*QT3[1],
             ESQ*QT3[0]*QT3[1], ESQ*QT3[1]*QT3[1], ESQ*QT3[1]*QT3[1],
             ESQ*QT3[0]*QT3[1], ESQ*QT3[1]*QT3[1], ESQ*QT3[1]*QT3[1],
@@ -16,39 +16,39 @@ SOLVENT_MODE = {
     },
     2: {
         'solvent_name': 'TIP4P',
-        'AOO': 600000.0,
-        'COO': 610.0,
-        'KQ': 2,
-        'QQ': [
-            ESQ*QT4[1]*QT4[1], ESQ*QT4[1]*QT4[1], ESQ*QT4[1]*QT4[3],
-            ESQ*QT4[1]*QT4[1], ESQ*QT4[1]*QT4[1], ESQ*QT4[1]*QT4[3],
-            ESQ*QT4[1]*QT4[3], ESQ*QT4[1]*QT4[3], ESQ*QT4[3]*QT4[3],
+        'aoo': 600000.0,
+        'coo': 610.0,
+        'kq': 1,        # coulombic interaction index starts at 1, notice charge on OW is 0.0
+        'qq': [
+            ESQ*QT4[1]*QT4[1], ESQ*QT4[1]*QT4[1], ESQ*QT4[1]*QT4[3],    # 1 -> 1,2,3    index
+            ESQ*QT4[1]*QT4[1], ESQ*QT4[1]*QT4[1], ESQ*QT4[1]*QT4[3],    # 2 -> 1,2,3
+            ESQ*QT4[1]*QT4[3], ESQ*QT4[1]*QT4[3], ESQ*QT4[3]*QT4[3],    # 3 -> 1,2,3
         ]
     },
 }
 
 
-#    key:    [Name,    modenum,    atom_names,                  atom_indexes_in_parfile]
+#    key:     [Name,    modenum,    atom_names,                  atom_indexes_in_parfile]
 SOLVENT_PARS = {
-    'tip3p': ['TIP3P',    1,    ('OW','HW','HW'),               (111,112,112,100)      ],
-    'tip4p': ['TIP4P',    2,    ('OW','HW','HW','M'),           (113,114,114,115)      ],
-    'ch3oh': ['CH3OH',    3,    ('O','H','CH3'),                (78,79,80,100)         ],
-    'ch3cn': ['CH3CN',    4,    ('C','N','CH3'),                (95,94,96,100)         ],
-    'meome': ['MeOMe',    5,    ('O','CH3','CH3'),              (108,109,109,100)      ],
-    'c3h8':  ['C3H8',     6,    ('CH2','CH3','CH3'),            (71,68,68,100)         ],
-    'chcl3': ['CHCl3',    7,    ('CH','CL','CL','CL'),          (120,121,121,121)      ],
-    'mecl2': ['MeCl2',    8,    ('CH2','CL','CL'),              (118,119,119,100)      ],
-    'thf':   ['THF',      9,    ('O','CH2','CH2','CH2','CH2'),  (108,110,71,110,71)    ],
-    'argon': ['Argon',   10,    ('AR',),                        (103,)                 ],
-    'ccl4':  ['CCl4',    11,    ('C','CL','CL','CL','CL'),      (122,123,123,123,123)  ],
-    'dmso':  ['DMSO',    12,    ('S','O','CH3','CH3'),          (124,125,126,126)      ],
-    'tip5p': ['TIP5P',   13,    ('O','HW','HW','LP','LP'),      (97,98,98,99,99)       ],
+    'tip3p' : ['TIP3P',    1,    ('OW','HW','HW'),               (111,112,112,100)      ],
+    'tip4p' : ['TIP4P',    2,    ('OW','HW','HW','M'),           (113,114,114,115)      ],
+    'ch3oh' : ['CH3OH',    3,    ('O','H','CH3'),                (78,79,80,100)         ],
+    'ch3cn' : ['CH3CN',    4,    ('C','N','CH3'),                (95,94,96,100)         ],
+    'meome' : ['MeOMe',    5,    ('O','CH3','CH3'),              (108,109,109,100)      ],
+    'c3h8'  : ['C3H8',     6,    ('CH2','CH3','CH3'),            (71,68,68,100)         ],
+    'chcl3' : ['CHCl3',    7,    ('CH','CL','CL','CL'),          (120,121,121,121)      ],
+    'mecl2' : ['MeCl2',    8,    ('CH2','CL','CL'),              (118,119,119,100)      ],
+    'thf'   : ['THF',      9,    ('O','CH2','CH2','CH2','CH2'),  (108,110,71,110,71)    ],
+    'argon' : ['Argon',   10,    ('AR',),                        (103,)                 ],
+    'ccl4'  : ['CCl4',    11,    ('C','CL','CL','CL','CL'),      (122,123,123,123,123)  ],
+    'dmso'  : ['DMSO',    12,    ('S','O','CH3','CH3'),          (124,125,126,126)      ],
+    'tip5p' : ['TIP5P',   13,    ('O','HW','HW','LP','LP'),      (97,98,98,99,99)       ],
     # special cases
-    '':      ['None',     0,    tuple(),                        tuple()                ],
-    'none':  ['None',     0,    tuple(),                        tuple()                ],
-    'other': ['OTHER',   20,    tuple(),                        tuple()                ],
-    'gbsa':  ['GB/SA',   99,    tuple(),                        tuple()                ],
-    'gb/sa': ['GB/SA',   99,    tuple(),                        tuple()                ],
+    ''      : ['None',     0,    tuple(),                        tuple()                ],
+    'none'  : ['None',     0,    tuple(),                        tuple()                ],
+    'other' : ['OTHER',   20,    tuple(),                        tuple()                ],
+    'gbsa'  : ['GB/SA',   99,    tuple(),                        tuple()                ],
+    'gb/sa' : ['GB/SA',   99,    tuple(),                        tuple()                ],
 }
 
 

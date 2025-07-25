@@ -23,6 +23,36 @@ ORG2BOX     = os.path.join(SRCPATH,'data','org2box')
 WATBOX      = os.path.join(SRCPATH,'data','watbox')
 
 
+def allclose(a, b, tol=None) -> bool:
+    """recursively compare a and b on given tolerance"""
+    tol = tol if tol else 0.000001
+    if a is None and b is None:
+        return True
+    if isinstance(a, bool) and isinstance(b, bool):
+        return a == b
+    if isinstance(a, (int,float)) and isinstance(b, (int,float)):
+        if abs(a-b) > tol:
+            return False
+        return True
+    if isinstance(a, (tuple,list)) and isinstance(b, (tuple,list)):
+        if len(a) != len(b):
+            return False
+        if not a:           # for empty object
+            return True
+        for vi,vj in zip(a,b):
+            if not allclose(vi, vj, tol):
+                return False
+        return True
+    if isinstance(a, dict) and isinstance(b, dict):
+        if set(list(a.keys())) != set(list(b.keys())):
+            return False
+        for k in a.keys():
+            if not allclose(a[k], b[k], tol):
+                return False
+        return True
+    return False
+
+
 def my_print_tld(dic,offset=0):
     """powerful print for `tuple,list,dictionary`"""
     skip = ' '*offset
@@ -63,13 +93,13 @@ bond_pars, dihedral_pars = read_ff_file(OPLSAA_PAR,skip=0,msg=False)
 oplsaa_bond_pars, oplsaa_angle_pars = read_oplsaa_file(OPLSAA_SB,msg=False)
 
 
-kws = copy.deepcopy(dpars)
+gkws = copy.deepcopy(dpars)
 
 Xsolute = InitSolutes(
     bond_pars=bond_pars, dihedral_pars=dihedral_pars,
     oplsaa_bond_pars=oplsaa_bond_pars, oplsaa_angle_pars=oplsaa_angle_pars,
     solutezmat=solutezmat,
-    **kws
+    **gkws
 )
 Xsolute.run()
 
@@ -90,20 +120,20 @@ Xsolute.set_pert_energies(energies)
 
 
 
-#!!kws
-kws['iztyp'] = [g[1] for g in Xsolute.solutezmat['data']]
-kws['nsatm'] = Xsolute.total_number_atoms
-kws['ityp'] = [i for i in range(kws['nsatm'])]      # one-on-one correspond with `a`, `b`, `q`
-kws['ityp1'] = [i for i in range(kws['nsatm'])]     # 
-kws['ityp2'] = [i for i in range(kws['nsatm'])]     # 
-kws['a'] = [Xsolute.solutesdata['reference']['A'], Xsolute.solutesdata['first']['A'], Xsolute.solutesdata['second']['A']] 
-kws['b'] = [Xsolute.solutesdata['reference']['B'], Xsolute.solutesdata['first']['B'], Xsolute.solutesdata['second']['B']] 
-kws['q'] = [Xsolute.solutesdata['reference']['Q'], Xsolute.solutesdata['first']['Q'], Xsolute.solutesdata['second']['Q']] 
-kws['anew'] = Xsolute.solutesdata['reference']['xyz']
-kws['anew1'] = Xsolute.solutesdata['first']['xyz']
-kws['anew2'] = Xsolute.solutesdata['second']['xyz']
-kws['nstyp'] = [0 for i in range(kws['nmol'])]      # index of solvent
-kws['isolute'] = p = []
+#!!gkws
+gkws['iztyp'] = [g[1] for g in Xsolute.solutezmat['data']]
+gkws['nsatm'] = Xsolute.total_number_atoms
+gkws['ityp'] = [i for i in range(gkws['nsatm'])]      # one-on-one correspond with `a`, `b`, `q`
+gkws['ityp1'] = [i for i in range(gkws['nsatm'])]     # 
+gkws['ityp2'] = [i for i in range(gkws['nsatm'])]     # 
+gkws['a'] = [Xsolute.solutesdata['reference']['A'], Xsolute.solutesdata['first']['A'], Xsolute.solutesdata['second']['A']] 
+gkws['b'] = [Xsolute.solutesdata['reference']['B'], Xsolute.solutesdata['first']['B'], Xsolute.solutesdata['second']['B']] 
+gkws['q'] = [Xsolute.solutesdata['reference']['Q'], Xsolute.solutesdata['first']['Q'], Xsolute.solutesdata['second']['Q']] 
+gkws['anew'] = Xsolute.solutesdata['reference']['xyz']
+gkws['anew1'] = Xsolute.solutesdata['first']['xyz']
+gkws['anew2'] = Xsolute.solutesdata['second']['xyz']
+gkws['nstyp'] = [0 for i in range(1024)]             # index of solvent, `MXS=2500`
+gkws['isolute'] = p = []
 for c,g in enumerate(Xsolute.solutesdata['atoms_number_offset']):
     p.extend([c for i in range(*g)])
 
@@ -113,12 +143,11 @@ Xsolvent = InitSolvents(
     bond_pars=bond_pars,
     solutezmat=solutezmat,
     solutesdata=Gsolutesdata,
-    **kws
+    **gkws
 )
-
 Xsolvent.run('reference')
 Gsolventsdata = Xsolvent.solventsdata
-dpars['irn'] = Xsolvent.irn
+gkws.update(Xsolvent.kws)
 
 
 
@@ -134,109 +163,46 @@ vdel2 = 2.0 * vdel
 nsolute = 1
 isolec = 1
 if isolec > nsolute: isolec = 1
-dpars['isolec'] = isolec
+gkws['isolec'] = isolec
 
 icut = dpars['icut']
-if icut == 5:
+if icut == 3:
+    ncutat = 2
+    gkws['icutat'][0], gkws['icutat'][1] = dpars['ncent1'], dpars['ncent2']
+elif icut == 4:
     ls = Gsolutesdata['reference']['atomtypes']
     ncutat = len(ls) - ls.count(0)
+elif icut == 5:
+    ls = Gsolutesdata['reference']['atomtypes']
+    ncutat = len(ls) - ls.count(0) - ls.count(-1) - ls.count(1)
 else:
-    ncutat = dpars['ncutat']
-dpars['ncutat'] = ncutat
+    ncutat = 0
+gkws['ncutat'] = ncutat
 
 # added keys
-dpars['modsv1'] = 2
-dpars['modsv2'] = 3
-if dpars['vdel'] <= 0.0:
-    if dpars['modsv1'] > 2 and dpars['modsv1'] != 3:
-        dpars['vdel'] = float(dpars['nmol']//10*15)
+gkws['modsv1'] = 2
+gkws['modsv2'] = 3
+if gkws['vdel'] <= 0.0:
+    if gkws['modsv1'] > 2 and gkws['modsv1'] != 3:
+        gkws['vdel'] = float(gkws['nmol']//10*15)
 
 
-refer = [
-    [0,             -0.998937581,   -0.046083729    ],
-    [-0.15332039,   -1.04447644,    0.941042945     ],
-    [0,             0,              0               ],
-    [0.195055886,   0.057935038,    -1.255833413    ],
-    [0.300103815,   2.198518923,    -1.834854627    ],
-    [1.301203709,   2.648104096,    -1.013138614    ],
-    [0.989260823,   2.732155428,    0.389950723     ],
-    [0.946170129,   0.611468604,    0.973757698     ],
-    [0.608108925,   0.471861586,    2.368750107     ],
-    [-1.240582863,  -0.569456353,   0.520376216     ],
-    [-0.518012259,  -0.186632837,   2.741291311     ],
-    [-1.445656529,  -0.658295018,   1.857115382     ],
-    [-0.787209646,  -0.406162989,   4.183857006     ],
-    [-0.761469478,  2.319200307,    -1.578814907    ],
-    [0.492024757,   2.029405827,    -2.898525886    ],
-    [2.350147271,   2.702319659,    -1.334839271    ],
-    [1.766106616,   3.033608006,    1.096296578     ],
-    [-0.038400911,  2.950036594,    0.700577986     ],
-    [2.022130674,   0.59867918,     0.707125488     ],
-    [1.315717009,   0.880934875,    3.107499065     ],
-    [-2.367256827,  -1.104248749,   2.263725228     ],
-    [-1.991712515,  -0.94808631,    -0.192487566    ],
-    [-1.733653166,  0.061066376,    4.486298275     ],
-    [0,             0,              4.833199759     ],
-    [-0.875437537,  -1.477129078,   4.408725885     ]
-]
-first = [
-    [0.013626801,   -0.990342183,   -0.044872701    ],
-    [-0.137663956,  -1.035458503,   0.942586475     ],
-    [0.008189514,   0.008638562,    -0.0000630278   ],
-    [0.200663279,   0.066036039,    -1.256319454    ],
-    [0.292008668,   2.187138814,    -1.833016116    ],
-    [1.292085126,   2.643302681,    -1.013683073    ],
-    [0.982206558,   2.7274329,      0.389858896     ],
-    [0.951885601,   0.607292499,    0.976446759     ],
-    [0.617110539,   0.467613287,    2.37222421      ],
-    [-1.237415912,  -0.555947728,   0.513578118     ],
-    [-0.512043945,  -0.184328495,   2.747101308     ],
-    [-1.448187745,  -0.648114954,   1.849205144     ],
-    [-0.789349337,  -0.407444133,   4.187579575     ],
-    [-0.76975309,   2.302283484,    -1.575214129    ],
-    [0.482947833,   2.017721469,    -2.896815643    ],
-    [2.340132784,   2.702897992,    -1.337346079    ],
-    [1.758643791,   3.034079554,    1.094415894     ],
-    [-0.046083165,  2.940033266,    0.702063104     ],
-    [2.028562753,   0.589340748,    0.713024201     ],
-    [1.329497676,   0.871024091,    3.109492458     ],
-    [-2.373718848,  -1.090516592,   2.250735184     ],
-    [-1.987741751,  -0.928231153,   -0.203462575    ],
-    [-1.73290709,   0.066901834,    4.487952687     ],
-    [-0.001363869,  -0.010975187,   4.841953084     ],
-    [-0.888014724,  -1.478509146,   4.407587337     ]
-]
-second = [
-    [-0.013532397,  -1.007593757,   -0.047404775    ],
-    [-0.168911592,  -1.053591885,   0.939378624     ],
-    [-0.008212026,  -0.008731886,   -0.00000587233  ],
-    [0.189463094,   0.049787438,    -1.255402568    ],
-    [0.308216553,   2.209812055,    -1.8366007      ],
-    [1.310221952,   2.652897264,    -1.012461325    ],
-    [0.996159266,   2.73680242,     0.390163797     ],
-    [0.94052119,    0.615618844,    0.97109808      ],
-    [0.599145318,   0.476021085,    2.36528397      ],
-    [-1.243782986,  -0.582897279,   0.527076937     ],
-    [-0.523937903,  -0.188962532,   2.735461824     ],
-    [-1.443210017,  -0.668348112,   1.864890874     ],
-    [-0.784950723,  -0.404741294,   4.180096151     ],
-    [-0.753157165,  2.335903553,    -1.582346976    ],
-    [0.501174954,   2.041052626,    -2.900140425    ],
-    [2.360033208,   2.701854173,    -1.332168666    ],
-    [1.77332482,    3.033122036,    1.098327547     ],
-    [-0.030877876,  2.959837288,    0.699195016     ],
-    [2.015731684,   0.607887432,    0.701264765     ],
-    [1.301945735,   0.890656889,    3.105519679     ],
-    [-2.360889956,  -1.117732905,   2.27655851      ],
-    [-1.99568422,   -0.967801971,   -0.181600763    ],
-    [-1.734163044,  0.055415185,    4.484696416     ],
-    [0.00144453,    0.011082894,    4.824290347     ],
-    [-0.862754907,  -1.475480418,   4.409841172     ],
-]
 
-Gsolutesdata['reference']['xyz'] = refer
-Gsolutesdata['first']['xyz'] = first
-Gsolutesdata['second']['xyz'] = second
+from .interface import Interface
+
+it = Interface(
+    refer_xyz=Gsolutesdata['reference']['xyz'],
+    refer_atnum=Gsolutesdata['reference']['atomtypes'],
+    first_xyz=Gsolutesdata['first']['xyz'],
+    first_atnum=Gsolutesdata['first']['atomtypes'],
+    second_xyz=Gsolutesdata['second']['xyz'],
+    second_atnum=Gsolutesdata['second']['atomtypes'],
+)
+it.run()
+Gsolutesdata['reference']['Q'] = it.refer_charges
+Gsolutesdata['first']['Q'] = it.first_charges
+Gsolutesdata['second']['Q'] = it.second_charges
+
 
 
 dipole = []
@@ -246,9 +212,12 @@ for k in ['reference','first','second']:
     qp = [0.0 for t in range(6)]
     r0 = Gsolutesdata[k]['xyz'][0]
     dxx = dyy = dzz = 0.0
+    j = -1
     for i in range(2,n):
+        if Gsolutesdata[k]['atomtypes'][i] <= 0: continue
+        j += 1
         ri = Gsolutesdata[k]['xyz'][i]
-        q = Gsolutesdata[k]['Q'][i] * 0.0548771714
+        q = Gsolutesdata[k]['Q'][j] * 0.0548771714
         ri0 = [ri[t]-r0[t] for t in range(3)]
         dxx += ri0[0] * q
         dyy += ri0[1] * q
@@ -294,14 +263,22 @@ for rxyz,st,a in zip(xyz,atomtypes,a):
                         numacceptor += 1
 
 
-from interactions import Interactions
-inter = Interactions(
-    solventsdata=Gsolventsdata, solutezmat=solutezmat,
-    solutesdata=Gsolutesdata,
-    **dpars
-)
-inter.run_solute_solvent_interactions(movetype=1)
-inter.normlize_wiks()
+from .inter import enmtx
+
+ckws = enmtx(**gkws)
+
+
+
+
+
+
+
+
+wiks = [1.0/(i+wkc) for i in wiks]
+total = sum(wiks)
+wiks = [i/total for i in wiks]
+maxwik = max(wiks)
+
 
 ecut = inter.ecut()
 

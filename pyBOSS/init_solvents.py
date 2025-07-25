@@ -37,6 +37,7 @@ def get_solvents_data(svmod1,svmod2,bond_pars):
     }
     solventpars.update(spars)
     solventpars['natmx'] = max(len(solvent1_pars[2]),len(solvent2_pars[2]))
+    solventpars['isvaty'] = [solvent1_pars[3], solvent2_pars[3]]
 
     sqrtesq = pow(g_c_esq,0.5)
     for s in ['1','2']:
@@ -58,12 +59,13 @@ def get_solvents_data(svmod1,svmod2,bond_pars):
         q = solventpars['1']['QW'][i]
         a = solventpars['1']['AW'][i]
         b = solventpars['1']['BW'][i]
-        for j in range(n):
+        for j in range(i,n):
             qq = solventpars['1']['QW'][j] * q
             aa = solventpars['1']['AW'][j] * a
             bb = solventpars['1']['BW'][j] * b
-            key = f'{i}-{j}'
-            inters[key] = [qq,aa,bb]
+            ka = f'{i}-{j}'
+            kb = f'{j}-{i}'
+            inters[ka] = inters[kb] = [qq,aa,bb]
     solventpars['1-1'] = inters
 
     return solventpars
@@ -127,84 +129,6 @@ def read_waterboxes_tip4p(filename):
     return waterboxes
 
 
-def wxpot_init(
-    nm, key, icut=None, waterbox=None, solventsdata=None, scut=None,
-    solutezmat=None, solutesdata=None, movetype=None,
-    **kws
-):
-    """function only used for initializing solvent input"""
-    assert movetype != 2
-
-    edge = waterbox['edge']
-    wxyz = waterbox['xyz'][nm]
-
-    wik = 1000000000.0
-    rmins = [1000000000.0 for i in range(solutezmat['number_of_entries'])]
-    for i,d in enumerate(solutesdata[key]['xyz']):
-        if solutesdata[key]['atomtypes'][i] == 0: continue
-        x = abs(d[0] - wxyz[0][0])
-        if x > edge[0]: x -= edge[0]*2.0        # minimum image conversion
-        y = abs(d[1] - wxyz[0][1])
-        if y > edge[1]: y -= edge[1]*2.0
-        z = abs(d[2] - wxyz[0][2])
-        if z > edge[2]: z -= edge[2]*2.0
-
-        for j,offset in enumerate(solutesdata['atoms_number_offset']):
-            if i >= offset[0] and i < offset[1]:
-                break
-        u = x*x + y*y + z*z
-        if u < rmins[j]:
-            rmins[j] = u
-        wik = min(u,wik)
-
-    su2 = scut*scut
-    if wik > su2:
-        return [0.0, 0.0]
-
-    sl2 = (scut-0.5)**2
-    sul = 1.0 / (su2-sl2)
-    iyes = [1 for i in range(len(solutezmat['data']))]
-
-    if wik >= sl2:
-        scale = sul * (su2-wik)
-    else:
-        scale = 1.0
-    if icut != 0:
-        for i in range(solutezmat['number_of_entries']):
-            if rmins[i] > su2:
-                for j in range(*solutesdata['atoms_number_offset'][i]):
-                    iyes[j] = 0
-    aw = solventsdata['1']['AW']
-    bw = solventsdata['1']['BW']
-    qw = solventsdata['1']['QW']
-    anew = solutesdata[key]['xyz']
-    a = solutesdata[key]['A']
-    b = solutesdata[key]['B']
-    q = solutesdata[key]['Q']
-    elj = ecoul = 0.0
-    for i,p in enumerate(solutezmat['data']):
-        if p[1] <= 0 or iyes[i] == 0: continue
-        x = abs(anew[i][0] - wxyz[0][0])         # LJ only for oxygen atom
-        y = abs(anew[i][1] - wxyz[0][1])
-        z = abs(anew[i][2] - wxyz[0][2])
-        xim = 0.0 if x <= edge[0] else edge[0]*2.0
-        yim = 0.0 if y <= edge[1] else edge[1]*2.0
-        zim = 0.0 if z <= edge[2] else edge[2]*2.0
-        rr = (x-xim)**2 + (y-yim)**2 + (z-zim)**2
-        r1 = pow(rr,0.5)
-        r6 = 1.0 / (rr*rr*rr)
-        elj += r6 * (a[i]*aw[0]*r6-b[i]*bw[0]) * scale
-        ecoul += q[i] * qw[0] * scale / r1
-        for j in range(1,len(wxyz)):
-            x = abs(anew[i][0] - wxyz[j][0])
-            y = abs(anew[i][1] - wxyz[j][1])
-            z = abs(anew[i][2] - wxyz[j][2])
-            rr = (x-xim)**2 + (y-yim)**2 + (z-zim)**2
-            r1 = pow(rr,0.5)
-            ecoul += q[i] * qw[j] * scale / r1
-    return [elj,ecoul]
-
-
 class InitSolvents:
     def __init__(
         self, svmod1=None, svmod2=None, bond_pars=None,
@@ -218,23 +142,31 @@ class InitSolvents:
 
         self.ibox = ibox if ibox else 216
         self.waterbox = waterboxes[self.ibox]
-        self.kws['ac'] = self.waterbox['xyz']
-        self.kws['edge'] = e = self.waterbox['edge']
-        self.kws['edg2'] = e / 2.0
-
         self.irn = irn if irn else 786123
         self.nmol = nmol
         self.nmol2 = nmol2
         self.solventsdata = get_solvents_data(svmod1, svmod2, bond_pars)
 
+        #!!kws
         self.kws = kws
+        self.kws['ac'] = self.waterbox['xyz']
+        self.kws['edg2'] = e = self.waterbox['edge']
+        self.kws['edge'] = [e[0]*2, e[1]*2, e[2]*2]
         self.kws['aw'] = []
         self.kws['bw'] = []
         self.kws['qw'] = []
         for k in ['1','2']:
-            self.kws['aw'].append(self.solventsdata[k]['aw'])
-            self.kws['bw'].append(self.solventsdata[k]['bw'])
-            self.kws['qw'].append(self.solventsdata[k]['qw'])
+            self.kws['aw'].append(self.solventsdata[k]['AW'])
+            self.kws['bw'].append(self.solventsdata[k]['BW'])
+            self.kws['qw'].append(self.solventsdata[k]['QW'])
+        self.kws.update(self.solventsdata)
+        self.kws['movtyp'] = 1
+        self.kws['ncutat'] = None
+        self.kws['nmov'] = None
+        self.kws['asol'] = None
+        self.kws['asol1'] = None
+        self.kws['asol2'] = None
+        self.kws['icut'] = 2        # tmp
 
     def run(self,key=None):
         self.buildup()
@@ -244,26 +176,28 @@ class InitSolvents:
             self.fix_solvent_waterbox()
         self.solventsdata.update(self.waterbox)
 
+        #self.kws.pop('icut')                # keep it
+        for i in self.nmr:
+            self.kws['nstyp'][i] = 1
+        self.kws['ac'] = self.waterbox['xyz']
+        self.kws['nmr'] = self.nmr
+        self.kws['irn'] = self.irn
+
     def buildup(self,key=None):
         if key is None: key = 'reference'
         if key != 'reference': assert False
         if key:
             self.energies = []
-
-            self.kws['movtyp'] = 1
-            self.kws['ncutat'] = None
-            self.kws['nmov'] = None
-
             for nm in range(self.ibox):
                 self.kws['nm'] = nm
-                energy = wxpot(**self.kws)
-                self.energies.append(energy)
+                gkw = wxpot(**self.kws)
+                self.energies.append(gkw['elj'][0])
         else:
             assert False
 
     def boss_type_filter(self):
         # to maximumly keep consistence
-        esw = [sum(self.energies[i]) for i in range(self.ibox)]
+        esw = self.energies
         sortedndx = list(range(self.ibox))
         for i in range(self.ibox):
             for j in range(i):
@@ -292,8 +226,7 @@ class InitSolvents:
                 for k in range(3):
                     self.waterbox['xyz'][i][j][k] = anew[j][k] + xyz[k]
         self.irn = irn
-        self.nmr = nmr
-        self.waterbox['nmr'] = nmr
+        self.nmr = self.waterbox['nmr'] = nmr
 
     def fix_solvent_waterbox(self):
         rcd = 0.9572

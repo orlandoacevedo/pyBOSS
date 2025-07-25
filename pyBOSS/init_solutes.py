@@ -1,8 +1,7 @@
-from PyBOSS.utils import (
-    read_zmat, zmat2cor, read_ff_file, find_all_rings_dfs, ClosedForm,
-    align_onto_z_axis
+from .utils import (
+    zmat2cor,  find_all_rings_dfs, ClosedForm, align_onto_z_axis
 )
-from PyBOSS.constants import (
+from .constants import (
     ATOMIC_RADIUS, AMBER_TO_OPLSAA_SYNONYM_ATOM_TYPE, BONDED_ATOMIC_RADIUS,
     ATOMIC_ELECTRONEGATIVITY, ATOMIC_WEIGHTS, AMBER_SURFACE_AREA
 )
@@ -33,7 +32,8 @@ class InitSolutes:
                 calc_maximum_overlap     |      recentroid
                                   calc_onto_z_axis
     """
-    def __init__(self,rc0=None,rc1=None,rc2=None,scllj=None,
+    def __init__(
+        self,rc0=None,rc1=None,rc2=None,scllj=None,
         nonebn=None,tk=None,
         izlong=None,maxovl=None,
         ncent1=None,ncent2=None,
@@ -47,9 +47,9 @@ class InitSolutes:
         self.info = ''
         self.esq = 332.06
         self.dsqesq = pow(self.esq,0.5)
-        self.rc0 = rc0 if rc0 else 0.5
-        self.rc1 = rc1 if rc1 else 0.0
-        self.rc2 = rc2 if rc2 else 1.0
+        self.rc0 = 0.0 if rc0 is None else rc0
+        self.rc1 = 0.5 if rc1 is None else rc1
+        self.rc2 = 1.0 if rc2 is None else rc2
         self.scllj = scllj if scllj else 1.0
         self.nonebn = True if nonebn else False
         self.tk = tk if tk else 298.15
@@ -57,7 +57,7 @@ class InitSolutes:
         self.ncent2 = ncent2
         self.izlong = True if izlong else False
         self.maxovl = True if maxovl else False
-        self.qmscale = qmscale if qmscale else 1.0
+        self.qmscale = 1.0 if qmscale is None else qmscale
 
         self.solutezmat = solutezmat
         self.bond_pars = bond_pars
@@ -110,17 +110,18 @@ class InitSolutes:
         if not self.nice: return
         mat = [i[3:9] for i in self.solutezmat['data']]
         self.solutesdata['xyz_initial'] = zmat2cor(mat)
+
         # deep copy
         final = [[j for j in i] for i in mat]
         refer = [[j for j in i] for i in mat]
         for v in self.solutezmat['bonds_geometry']:
-            if v[1] == 1:
+            if v[1] == 1:           # for bond
                 final[v[0]][1] = v[2]
                 refer[v[0]][1] += self.rc0 * (v[2]-refer[v[0]][1])
-            elif v[1] == 2:
+            elif v[1] == 2:         # for angle
                 final[v[0]][3] = v[2]
                 refer[v[0]][3] += self.rc0 * (v[2]-refer[v[0]][3])
-            else:
+            else:                   # for dihedral
                 final[v[0]][5] = v[2]
                 refer[v[0]][5] += self.rc0 * (v[2]-refer[v[0]][5])
         self.solutesdata['reference'] = {'xyz': zmat2cor(refer) }
@@ -180,7 +181,6 @@ class InitSolutes:
                 v = 1
             lt.append(v)
         self.solutesdata['amber_sasa_atomtypes'] = lt
-
 
     def calc_nonbond_pars(self):
         if not self.nice: return
@@ -1019,12 +1019,13 @@ class InitSolutes:
             bs = self.solutesdata['second']['pert_bonds_r'][i]
             first[v][1] += bf - br
             second[v][1] += bs - br
+
         for i,v in enumerate(self.solutezmat['angles_variable']):
             br = self.solutesdata['reference']['pert_angles_a'][i]
             bf = self.solutesdata['first']['pert_angles_a'][i]
             bs = self.solutesdata['second']['pert_angles_a'][i]
-            first[v][1] += bf - br
-            second[v][1] += bs - br
+            first[v][3] += bf - br
+            second[v][3] += bs - br
 
         self.solutesdata['first']['xyz'] = zmat2cor(first)
         self.solutesdata['second']['xyz'] = zmat2cor(second)
@@ -1046,7 +1047,7 @@ class InitSolutes:
         if not self.nice: return
         if not self._bo_recenter: return
         rcor = self.solutesdata['reference']['xyz']
-        a = self.ncent1 - 1
+        a = self.ncent1 - 1     # index minus 1 to start at 0
         b = self.ncent2 - 1
         offset = [(rcor[a][i]+rcor[b][i])/2.0 for i in range(3)]
         for lr,lf,ls in zip(
@@ -1073,19 +1074,34 @@ class InitSolutes:
         self.calc_maximum_overlap()
         self.recentroid()
         self.calc_onto_z_axis()
+        if self.nice:
+            self.qmidx = [
+                (i,v)
+                for i,v in enumerate(self.solutesdata['reference']['atomtypes'])
+                if v not in [-1,99,0,2]
+            ]
 
     def calc_onto_z_axis(self):
         if not self.nice: return
-        if not self.izlong: return 
-        self.solutesdata['reference']['xyz'] = align_onto_z_axis(self.solutesdata['reference']['xyz'])
-        self.solutesdata['first']['xyz'] = align_onto_z_axis(self.solutesdata['first']['xyz'])
-        self.solutesdata['second']['xyz'] = align_onto_z_axis(self.solutesdata['second']['xyz'])
+        if not self.izlong: return
+        cor = self.solutesdata['reference']['xyz']
+        sol1 = self.solutesdata['first']['xyz']
+        sol2 = self.solutesdata['second']['xyz']
+        fin0, fin1, fin2 = align_onto_z_axis(cor,sol1,sol2)  # align is only based on reference
+        self.solutesdata['reference']['xyz'] = fin0
+        self.solutesdata['first']['xyz'] = fin1
+        self.solutesdata['second']['xyz'] = fin2
+
+    def get_qm_xyzs(self):
+        refer = [[v,*self.solutesdata['reference']['xyz'][i]] for i,v in self.qmidx]
+        first = [[v,*self.solutesdata['first']['xyz'][i]] for i,v in self.qmidx]
+        second = [[v,*self.solutesdata['second']['xyz'][i]] for i,v in self.qmidx]
+        return refer, first, second
 
     def calc_atoms_symmetry_list(self):
-        if not self.nice: return
         self.atoms_symmetry_list = []
         for i,v in enumerate(self.solutesdata['reference']['atomtypes']):
-            if v in [99,0,2]: continue
+            if v in [-1,99,0,2]: continue
             if v in [1,8,9,17]: continue
             for a in [1,8,9,17]:
                 ls = [
@@ -1095,7 +1111,6 @@ class InitSolutes:
                     self.atoms_symmetry_list.append(ls)
 
     def symmetrize_charges(self,charges,key='reference',fullpars=True):
-        if not self.nice: return
         if fullpars:
             newcharges = [i for i in charges]
         else:
@@ -1106,7 +1121,7 @@ class InitSolutes:
                     newcharges[j] = charges[i]
                     i += 1
         for t in self.solutesdata[key]['atomtypes']:
-            if t in [99,0,2]: continue
+            if t in [-1,99,0,2]: continue
             for v in self.atoms_symmetry_list:
                 tot = [newcharges[j] for j in v]
                 a = sum(tot)/len(v)
@@ -1119,13 +1134,11 @@ class InitSolutes:
         self.solutesdata[key]['Q'] = [i*self.qmscale*self.dsqesq for i in new]
 
     def set_pert_charges(self,charges,fullpars=True):
-        if not self.nice: return
         news = charges if len(charges) == 3 else [charges, charges, charges]
         for i,key in enumerate(['reference','first','second']):
             self.calc_coulombic_pars(news[i],key,fullpars)
 
     def set_pert_energies(self,energies):
-        if not self.nice: return
         news = energies if len(energies) == 3 else [energies, energies, energies]
         for i,key in enumerate(['reference','first','second']):
             self.solutesdata[key]['energy'] = news[i]
