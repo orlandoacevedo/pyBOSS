@@ -28,4 +28,4 @@ Jorgensen, W.L.; Tirado–Rives, J. "Molecular modeling of organic and biomolecu
 
 **Software License**:
 pyBOSS.
-Copyright (c) 2024 Orlando Acevedo
+Copyright (c) 2026 Orlando Acevedo
